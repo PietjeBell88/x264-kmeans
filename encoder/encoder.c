@@ -291,6 +291,7 @@ static void x264_slice_header_write( bs_t *s, x264_slice_header_t *sh, int i_nal
         {
             int luma_weight_l0_flag = !!sh->weight[i][0].weightfn;
             int chroma_weight_l0_flag = !!sh->weight[i][1].weightfn || !!sh->weight[i][2].weightfn;
+            //printf( "ref_idx_l0_active, luma, chroma = %3d %3d %3d\n", sh->i_num_ref_idx_l0_active, luma_weight_l0_flag, chroma_weight_l0_flag );
             bs_write1( s, luma_weight_l0_flag );
             if( luma_weight_l0_flag )
             {
@@ -1687,9 +1688,9 @@ static void x264_weighted_pred_init( x264_t *h )
     {
         for( int j = 0; j < h->i_ref[0]; j++ )
         {
-            if( h->fenc->weight[j][i].weightfn )
+            if( h->fenc->weight[j][0][i].weightfn )
             {
-                h->sh.weight[j][i] = h->fenc->weight[j][i];
+                h->sh.weight[j][i] = h->fenc->weight[j][0][i];
                 // if weight is useless, don't write it to stream
                 if( h->sh.weight[j][i].i_scale == 1<<h->sh.weight[j][i].i_denom && h->sh.weight[j][i].i_offset == 0 )
                     h->sh.weight[j][i].weightfn = NULL;
@@ -1825,22 +1826,22 @@ static inline void x264_reference_build_list( x264_t *h, int i_poc )
             if( h->param.rc.b_stat_read )
                 x264_ratecontrol_set_weights( h, h->fenc );
 
-            if( !h->fenc->weight[0][0].weightfn )
+            if( !h->fenc->weight[0][0][0].weightfn )
             {
-                h->fenc->weight[0][0].i_denom = 0;
+                h->fenc->weight[0][0][0].i_denom = 0;
                 SET_WEIGHT( w[0], 1, 1, 0, -1 );
                 idx = x264_weighted_reference_duplicate( h, 0, w );
             }
             else
             {
-                if( h->fenc->weight[0][0].i_scale == 1<<h->fenc->weight[0][0].i_denom )
+                if( h->fenc->weight[0][0][0].i_scale == 1<<h->fenc->weight[0][0][0].i_denom )
                 {
-                    SET_WEIGHT( h->fenc->weight[0][0], 1, 1, 0, h->fenc->weight[0][0].i_offset );
+                    SET_WEIGHT( h->fenc->weight[0][0][0], 1, 1, 0, h->fenc->weight[0][0][0].i_offset );
                 }
                 x264_weighted_reference_duplicate( h, 0, x264_weight_none );
-                if( h->fenc->weight[0][0].i_offset > -128 )
+                if( h->fenc->weight[0][0][0].i_offset > -128 )
                 {
-                    w[0] = h->fenc->weight[0][0];
+                    w[0] = h->fenc->weight[0][0][0];
                     w[0].i_offset--;
                     h->mc.weight_cache( h, &w[0] );
                     idx = x264_weighted_reference_duplicate( h, 0, w );

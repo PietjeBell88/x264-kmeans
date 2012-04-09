@@ -281,7 +281,7 @@ static void x264_weights_analyse( x264_t *h, x264_frame_t *fenc, x264_frame_t *r
     int i_delta_index = fenc->i_frame - ref->i_frame - 1;
     /* epsilon is chosen to require at least a numerator of 127 (with denominator = 128) */
     const float epsilon = 1.f/128.f;
-    x264_weight_t *weights = fenc->weight[0];
+    x264_weight_t *weights = fenc->weight[0][0];
     SET_WEIGHT( weights[0], 0, 1, 0, 0 );
     SET_WEIGHT( weights[1], 0, 1, 0, 0 );
     SET_WEIGHT( weights[2], 0, 1, 0, 0 );
@@ -729,7 +729,7 @@ static int x264_slicetype_frame_cost( x264_t *h, x264_mb_analysis_t *a,
             {
                 x264_emms();
                 x264_weights_analyse( h, frames[b], frames[p0], 1 );
-                w = frames[b]->weight[0];
+                w = frames[b]->weight[0][0];
             }
             frames[b]->lowres_mvs[0][b-p0-1][0][0] = 0;
         }
