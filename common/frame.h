@@ -85,7 +85,8 @@ typedef struct x264_frame
     pixel *buffer_fld[4];
     pixel *buffer_lowres[4];
 
-    x264_weight_t weight[X264_REF_MAX][X264_DUPS_MAX][3]; /* [ref_index][plane] */
+    x264_weight_t weight[X264_REF_MAX][3]; /* [ref_index][plane] */
+    x264_weight_t tempweight[X264_REF_MAX][X264_DUPS_MAX][3];
     pixel *weighted[X264_REF_MAX]; /* plane[0] weighted of the reference frames */
     int b_duplicate;
     struct x264_frame *orig;

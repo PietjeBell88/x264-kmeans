@@ -438,7 +438,7 @@ int x264_reference_build_list_optimal( x264_t *h )
 {
     ratecontrol_entry_t *rce = h->rc->rce;
     x264_frame_t *frames[16];
-    x264_weight_t weights[X264_REF_MAX-1][X264_DUPS_MAX][3];
+    x264_weight_t weights[15][3];
     int refcount[16];
 
     if( rce->refs != h->i_ref[0] )
@@ -447,7 +447,7 @@ int x264_reference_build_list_optimal( x264_t *h )
     memcpy( frames, h->fref[0], sizeof(frames) );
     memcpy( refcount, rce->refcount, sizeof(refcount) );
     memcpy( weights, h->fenc->weight, sizeof(weights) );
-    memset( &h->fenc->weight[1][0], 0, sizeof(x264_weight_t[X264_REF_MAX-1][X264_DUPS_MAX][3]) );
+    memset( &h->fenc->weight[1], 0, sizeof(x264_weight_t[15][3]) );
 
     /* For now don't reorder ref 0; it seems to lower quality
        in most cases due to skips. */
@@ -1612,17 +1612,18 @@ int x264_ratecontrol_slice_type( x264_t *h, int frame_num )
 
 void x264_ratecontrol_set_weights( x264_t *h, x264_frame_t *frm )
 {
+    printf( "ratecontrol set weights1!\n" );
     ratecontrol_entry_t *rce = &h->rc->entry[frm->i_frame];
     if( h->param.analyse.i_weighted_pred <= 0 )
         return;
 
     if( rce->i_weight_denom[0] >= 0 )
-        SET_WEIGHT( frm->weight[0][0][0], 1, rce->weight[0][0], rce->i_weight_denom[0], rce->weight[0][1] );
+        SET_WEIGHT( frm->weight[0][0], 1, rce->weight[0][0], rce->i_weight_denom[0], rce->weight[0][1] );
 
     if( rce->i_weight_denom[1] >= 0 )
     {
-        SET_WEIGHT( frm->weight[0][0][1], 1, rce->weight[1][0], rce->i_weight_denom[1], rce->weight[1][1] );
-        SET_WEIGHT( frm->weight[0][0][2], 1, rce->weight[2][0], rce->i_weight_denom[1], rce->weight[2][1] );
+        SET_WEIGHT( frm->weight[0][1], 1, rce->weight[1][0], rce->i_weight_denom[1], rce->weight[1][1] );
+        SET_WEIGHT( frm->weight[0][2], 1, rce->weight[2][0], rce->i_weight_denom[1], rce->weight[2][1] );
     }
 }
 

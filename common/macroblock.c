@@ -324,7 +324,7 @@ int x264_macroblock_cache_allocate( x264_t *h )
                 numweightbuf = 1;
         }
 
-        for( int i = 0; i < numweightbuf; i++ )
+        for( int i = 0; i < numweightbuf+1; i++ )
             CHECKED_MALLOC( h->mb.p_weight_buf[i], luma_plane_size * sizeof(pixel) );
     }
 

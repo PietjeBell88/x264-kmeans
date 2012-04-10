@@ -291,10 +291,11 @@ static void x264_slice_header_write( bs_t *s, x264_slice_header_t *sh, int i_nal
         {
             int luma_weight_l0_flag = !!sh->weight[i][0].weightfn;
             int chroma_weight_l0_flag = !!sh->weight[i][1].weightfn || !!sh->weight[i][2].weightfn;
-            //printf( "ref_idx_l0_active, luma, chroma = %3d %3d %3d\n", sh->i_num_ref_idx_l0_active, luma_weight_l0_flag, chroma_weight_l0_flag );
             bs_write1( s, luma_weight_l0_flag );
             if( luma_weight_l0_flag )
             {
+                printf( "ref_idx_l0_active, luma, offset = %3d %3d %3d\n", sh->i_num_ref_idx_l0_active, luma_weight_l0_flag, sh->weight[i][0].i_offset );
+
                 bs_write_se( s, sh->weight[i][0].i_scale );
                 bs_write_se( s, sh->weight[i][0].i_offset );
             }
@@ -1622,8 +1623,15 @@ static inline void x264_reference_check_reorder( x264_t *h )
         }
 }
 
+#define PRINT_WEIGHT( w )\
+{\
+    printf( "LUMA:    denom %3d, scale %3d, offset %3d\n", w[0].i_denom, w[0].i_scale, w[0].i_offset );\
+    printf( "CHROMA1: denom %3d, scale %3d, offset %3d\n", w[1].i_denom, w[1].i_scale, w[1].i_offset );\
+    printf( "CHROMA2: denom %3d, scale %3d, offset %3d\n", w[2].i_denom, w[2].i_scale, w[2].i_offset );\
+}
+
 /* return -1 on failure, else return the index of the new reference frame */
-int x264_weighted_reference_duplicate( x264_t *h, int i_ref, const x264_weight_t *w )
+int x264_weighted_reference_duplicate( x264_t *h, int i_ref, int n, const x264_weight_t *w )
 {
     int i = h->i_ref[0];
     int j = 1;
@@ -1638,7 +1646,8 @@ int x264_weighted_reference_duplicate( x264_t *h, int i_ref, const x264_weight_t
     /* Duplication is a hack to compensate for crappy rounding in motion compensation.
      * With high bit depth, it's not worth doing, so turn it off except in the case of
      * unweighted dupes. */
-    if( BIT_DEPTH > 8 && w != x264_weight_none )
+    // Temporarily only write "real" weights that have been analyzed
+    if( w != x264_weight_none )
         return -1;
 
     newframe = x264_frame_pop_blank_unused( h );
@@ -1650,7 +1659,12 @@ int x264_weighted_reference_duplicate( x264_t *h, int i_ref, const x264_weight_t
     newframe->i_reference_count = 1;
     newframe->orig = h->fref[0][i_ref];
     newframe->b_duplicate = 1;
-    memcpy( h->fenc->weight[j], w, sizeof(h->fenc->weight[i]) );
+    // FIXME: This is not correct
+    memcpy( h->fenc->weight[n], h->fenc->tempweight[0][n], sizeof(x264_weight_t) * 3 );
+    PRINT_WEIGHT( h->fenc->tempweight[0][n] );
+    PRINT_WEIGHT( h->fenc->weight[n] );
+
+    //memcpy( h->fenc->weight[j], w, sizeof(h->fenc->weight[i]) );
 
     /* shift the frames to make space for the dupe. */
     h->b_ref_reorder[0] = 1;
@@ -1688,9 +1702,9 @@ static void x264_weighted_pred_init( x264_t *h )
     {
         for( int j = 0; j < h->i_ref[0]; j++ )
         {
-            if( h->fenc->weight[j][0][i].weightfn )
+            if( h->fenc->weight[j][i].weightfn )
             {
-                h->sh.weight[j][i] = h->fenc->weight[j][0][i];
+                h->sh.weight[j][i] = h->fenc->weight[j][i];
                 // if weight is useless, don't write it to stream
                 if( h->sh.weight[j][i].i_scale == 1<<h->sh.weight[j][i].i_denom && h->sh.weight[j][i].i_offset == 0 )
                     h->sh.weight[j][i].weightfn = NULL;
@@ -1823,29 +1837,34 @@ static inline void x264_reference_build_list( x264_t *h, int i_poc )
         {
             x264_weight_t w[3];
             w[1].weightfn = w[2].weightfn = NULL;
+            // FIXME: Probably have to change something here (and in the ratecontrol_set_weights function)
             if( h->param.rc.b_stat_read )
                 x264_ratecontrol_set_weights( h, h->fenc );
 
-            if( !h->fenc->weight[0][0][0].weightfn )
+/*            if( !h->fenc->weight[0][0][0].weightfn )
             {
                 h->fenc->weight[0][0][0].i_denom = 0;
                 SET_WEIGHT( w[0], 1, 1, 0, -1 );
                 idx = x264_weighted_reference_duplicate( h, 0, w );
-            }
-            else
+            }*/
+            for ( int i = 0; i < X264_DUPS_MAX; i++ )
             {
-                if( h->fenc->weight[0][0][0].i_scale == 1<<h->fenc->weight[0][0][0].i_denom )
+                if ( !h->fenc->tempweight[0][i][0].weightfn )
+                    continue;
+
+                if( h->fenc->tempweight[0][i][0].i_scale == 1<<h->fenc->tempweight[0][i][0].i_denom )
                 {
-                    SET_WEIGHT( h->fenc->weight[0][0][0], 1, 1, 0, h->fenc->weight[0][0][0].i_offset );
+                    SET_WEIGHT( h->fenc->tempweight[0][i][0], 1, 1, 0, h->fenc->tempweight[0][i][0].i_offset );
                 }
-                x264_weighted_reference_duplicate( h, 0, x264_weight_none );
-                if( h->fenc->weight[0][0][0].i_offset > -128 )
+
+                x264_weighted_reference_duplicate( h, 0, i, x264_weight_none );
+/*                if( h->fenc->weight[0][0][0].i_offset > -128 )
                 {
                     w[0] = h->fenc->weight[0][0][0];
                     w[0].i_offset--;
                     h->mc.weight_cache( h, &w[0] );
                     idx = x264_weighted_reference_duplicate( h, 0, w );
-                }
+                }*/
             }
         }
         h->mb.ref_blind_dupe = idx;
@@ -3155,11 +3174,13 @@ int     x264_encoder_encode( x264_t *h,
     if( h->sh.i_type == SLICE_TYPE_B )
         x264_macroblock_bipred_init( h );
 
+    //printf( "Weightp pred init~!\n" );
     x264_weighted_pred_init( h );
 
     if( i_nal_ref_idc != NAL_PRIORITY_DISPOSABLE )
         h->i_frame_num++;
 
+    //printf( "Write frame~!\n" );
     /* Write frame */
     h->i_threadslice_start = 0;
     h->i_threadslice_end = h->mb.i_mb_height;

@@ -276,15 +276,26 @@ static NOINLINE unsigned int x264_weight_cost_chroma444( x264_t *h, x264_frame_t
     return cost;
 }
 
+#define SET_WEIGHT_ALL( wa, p, b, s, d, o )\
+{\
+    for ( int _i = 0; _i < 16; _i++ )\
+    {\
+        SET_WEIGHT( wa[_i][p], b, s, d, o );\
+    }\
+}
+
 static void x264_weights_analyse( x264_t *h, x264_frame_t *fenc, x264_frame_t *ref, int b_lookahead )
 {
     int i_delta_index = fenc->i_frame - ref->i_frame - 1;
     /* epsilon is chosen to require at least a numerator of 127 (with denominator = 128) */
     const float epsilon = 1.f/128.f;
-    x264_weight_t *weights = fenc->weight[0][0];
-    SET_WEIGHT( weights[0], 0, 1, 0, 0 );
-    SET_WEIGHT( weights[1], 0, 1, 0, 0 );
-    SET_WEIGHT( weights[2], 0, 1, 0, 0 );
+    x264_weight_t *weights = fenc->tempweight[0][0];
+    //x264_weight_t **weights_dup = fenc->weight[0];
+
+    SET_WEIGHT_ALL( fenc->tempweight[0], 0, 0, 1, 0, 0 );
+    SET_WEIGHT_ALL( fenc->tempweight[0], 1, 0, 1, 0, 0 );
+    SET_WEIGHT_ALL( fenc->tempweight[0], 2, 0, 1, 0, 0 );
+
     int chroma_initted = 0;
     /* Don't check chroma in lookahead, or if there wasn't a luma weight. */
     for( int plane = 0; plane <= 2 && !( plane && ( !weights[0].weightfn || b_lookahead ) ); plane++ )
@@ -360,6 +371,8 @@ static void x264_weights_analyse( x264_t *h, x264_frame_t *fenc, x264_frame_t *r
         // This gives a slight improvement due to rounding errors but only tests one offset in lookahead.
         // Currently only searches within +/- 1 of the best offset found so far.
         // TODO: Try other offsets/multipliers/combinations thereof?
+
+        // Insert all three options if we're not in lookahead
         cur_offset = fenc_mean - ref_mean * minscale / (1 << mindenom) + 0.5f * b_lookahead;
         start_offset = x264_clip3( cur_offset - !b_lookahead, -128, 127 );
         end_offset   = x264_clip3( cur_offset + !b_lookahead, -128, 127 );
@@ -388,11 +401,18 @@ static void x264_weights_analyse( x264_t *h, x264_frame_t *fenc, x264_frame_t *r
         /* 0.2% termination derived experimentally to avoid weird weights in frames that are mostly intra. */
         if( !found || (minscale == 1 << mindenom && minoff == 0) || (float)minscore / origscore > 0.998f )
         {
-            SET_WEIGHT( weights[plane], 0, 1, 0, 0 );
+            SET_WEIGHT_ALL( fenc->tempweight[0], plane, 0, 1, 0, 0 );
             continue;
         }
         else
-            SET_WEIGHT( weights[plane], 1, minscale, mindenom, minoff );
+        {
+            // Insert three duplicates.. -1, 0, +1 offset from the "ideal"
+            SET_WEIGHT( fenc->tempweight[0][0][plane], 1, minscale, mindenom, minoff );
+            if ( minoff > -128 )
+                SET_WEIGHT( fenc->tempweight[0][1][plane], 1, minscale, mindenom, minoff-1 );
+            if ( minoff < 127 )
+                SET_WEIGHT( fenc->tempweight[0][2][plane], 1, minscale, mindenom, minoff+1 );
+        }
 
         if( h->param.analyse.i_weighted_pred == X264_WEIGHTP_FAKE && weights[0].weightfn && !plane )
             fenc->f_weighted_cost_delta[i_delta_index] = (float)minscore / origscore;
@@ -729,7 +749,7 @@ static int x264_slicetype_frame_cost( x264_t *h, x264_mb_analysis_t *a,
             {
                 x264_emms();
                 x264_weights_analyse( h, frames[b], frames[p0], 1 );
-                w = frames[b]->weight[0][0];
+                w = frames[b]->weight[0];
             }
             frames[b]->lowres_mvs[0][b-p0-1][0][0] = 0;
         }
