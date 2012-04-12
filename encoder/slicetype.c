@@ -431,16 +431,23 @@ static void x264_weights_analyse( x264_t *h, x264_frame_t *fenc, x264_frame_t *r
         }
     }
 
+    // FIXME: Works for now, because when weights[0] is not zero, the other two are not zero either
+    // but should change it to check individually
     if( weights[0].weightfn && b_lookahead )
     {
         //scale lowres in lookahead for slicetype_frame_cost
         pixel *src = ref->buffer_lowres[0];
-        pixel *dst = h->mb.p_weight_buf[0];
         int width = ref->i_width_lowres + PADH*2;
         int height = ref->i_lines_lowres + PADV*2;
-        x264_weight_scale_plane( h, dst, ref->i_stride_lowres, src, ref->i_stride_lowres,
-                                 width, height, &weights[0] );
-        fenc->weighted[0] = h->mb.p_weight_buf[0] + PADH + ref->i_stride_lowres * PADV;
+
+        for( int i = 0; i < 3; i++ )
+        {
+            pixel *dst = h->mb.p_weight_buf[i];
+
+            x264_weight_scale_plane( h, dst, ref->i_stride_lowres, src, ref->i_stride_lowres,
+                                    width, height, &fenc->tempweight[0][i][0] );
+            fenc->weighted[i] = h->mb.p_weight_buf[i] + PADH + ref->i_stride_lowres * PADV;
+        }
     }
 }
 
