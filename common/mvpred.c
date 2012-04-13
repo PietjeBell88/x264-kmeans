@@ -544,10 +544,10 @@ void x264_mb_predict_mv_ref16x16( x264_t *h, int i_list, int i_ref, int16_t mvc[
         SET_MVP( h->mb.cache.mv[i_list][x264_scan8[12]] );
     }
 
-    if( i_ref < 3 && h->frames.b_have_lowres )
+    if( i_ref == 0 && h->frames.b_have_lowres )
     {
-        int idx = i_list ? h->fref[1][i_ref]->i_frame-h->fenc->i_frame-1
-                         : h->fenc->i_frame-h->fref[0][i_ref]->i_frame-1;
+        int idx = i_list ? h->fref[1][0]->i_frame-h->fenc->i_frame-1
+                         : h->fenc->i_frame-h->fref[0][0]->i_frame-1;
         if( idx <= h->param.i_bframe )
         {
             int16_t (*lowres_mv)[2] = h->fenc->lowres_mvs[i_list][idx];

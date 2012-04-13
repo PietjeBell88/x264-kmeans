@@ -276,25 +276,23 @@ static NOINLINE unsigned int x264_weight_cost_chroma444( x264_t *h, x264_frame_t
     return cost;
 }
 
-#define SET_WEIGHT_ALL( wa, p, b, s, d, o )\
-{\
-    for ( int _i = 0; _i < 16; _i++ )\
-    {\
-        SET_WEIGHT( wa[_i][p], b, s, d, o );\
-    }\
-}
-
 static void x264_weights_analyse( x264_t *h, x264_frame_t *fenc, x264_frame_t *ref, int b_lookahead )
 {
     int i_delta_index = fenc->i_frame - ref->i_frame - 1;
     /* epsilon is chosen to require at least a numerator of 127 (with denominator = 128) */
     const float epsilon = 1.f/128.f;
-    x264_weight_t *weights = fenc->tempweight[0][0];
-    //x264_weight_t **weights_dup = fenc->weight[0];
+    x264_weight_t *weights = fenc->weight[0];
+    SET_WEIGHT( weights[0], 0, 1, 0, 0 );
+    SET_WEIGHT( weights[1], 0, 1, 0, 0 );
+    SET_WEIGHT( weights[2], 0, 1, 0, 0 );
 
-    SET_WEIGHT_ALL( fenc->tempweight[0], 0, 0, 1, 0, 0 );
-    SET_WEIGHT_ALL( fenc->tempweight[0], 1, 0, 1, 0, 0 );
-    SET_WEIGHT_ALL( fenc->tempweight[0], 2, 0, 1, 0, 0 );
+    // Not sure if we have to do this seeing as they are set later anyway
+    SET_WEIGHT( fenc->weight[1][0], 0, 1, 0, 0 );
+    SET_WEIGHT( fenc->weight[2][1], 0, 1, 0, 0 );
+    SET_WEIGHT( fenc->weight[3][2], 0, 1, 0, 0 );
+    SET_WEIGHT( fenc->weight[2][0], 0, 1, 0, 0 );
+    SET_WEIGHT( fenc->weight[3][1], 0, 1, 0, 0 );
+    SET_WEIGHT( fenc->weight[3][2], 0, 1, 0, 0 );
 
     int chroma_initted = 0;
     /* Don't check chroma in lookahead, or if there wasn't a luma weight. */
@@ -371,8 +369,6 @@ static void x264_weights_analyse( x264_t *h, x264_frame_t *fenc, x264_frame_t *r
         // This gives a slight improvement due to rounding errors but only tests one offset in lookahead.
         // Currently only searches within +/- 1 of the best offset found so far.
         // TODO: Try other offsets/multipliers/combinations thereof?
-
-        // Insert all three options if we're not in lookahead
         cur_offset = fenc_mean - ref_mean * minscale / (1 << mindenom) + 0.5f * b_lookahead;
         start_offset = x264_clip3( cur_offset - !b_lookahead, -128, 127 );
         end_offset   = x264_clip3( cur_offset + !b_lookahead, -128, 127 );
@@ -401,17 +397,19 @@ static void x264_weights_analyse( x264_t *h, x264_frame_t *fenc, x264_frame_t *r
         /* 0.2% termination derived experimentally to avoid weird weights in frames that are mostly intra. */
         if( !found || (minscale == 1 << mindenom && minoff == 0) || (float)minscore / origscore > 0.998f )
         {
-            SET_WEIGHT_ALL( fenc->tempweight[0], plane, 0, 1, 0, 0 );
+            SET_WEIGHT( weights[plane], 0, 1, 0, 0 );
+            SET_WEIGHT( fenc->weight[1][plane], 0, 1, 0, 0 );
+            SET_WEIGHT( fenc->weight[2][plane], 0, 1, 0, 0 );
             continue;
         }
         else
         {
             // Insert three duplicates.. -1, 0, +1 offset from the "ideal"
-            SET_WEIGHT( fenc->tempweight[0][0][plane], 1, minscale, mindenom, minoff );
+            SET_WEIGHT( weights[plane], 1, minscale, mindenom, minoff );
             if ( minoff > -128 )
-                SET_WEIGHT( fenc->tempweight[0][1][plane], 1, minscale, mindenom, minoff-1 );
+                SET_WEIGHT( fenc->weight[1][plane], 1, minscale, mindenom, minoff-1 );
             if ( minoff < 127 )
-                SET_WEIGHT( fenc->tempweight[0][2][plane], 1, minscale, mindenom, minoff+1 );
+                SET_WEIGHT( fenc->weight[2][plane], 1, minscale, mindenom, minoff+1 );
         }
 
         if( h->param.analyse.i_weighted_pred == X264_WEIGHTP_FAKE && weights[0].weightfn && !plane )
@@ -431,8 +429,6 @@ static void x264_weights_analyse( x264_t *h, x264_frame_t *fenc, x264_frame_t *r
         }
     }
 
-    // FIXME: Works for now, because when weights[0] is not zero, the other two are not zero either
-    // but should change it to check individually
     if( weights[0].weightfn && b_lookahead )
     {
         //scale lowres in lookahead for slicetype_frame_cost
@@ -440,12 +436,16 @@ static void x264_weights_analyse( x264_t *h, x264_frame_t *fenc, x264_frame_t *r
         int width = ref->i_width_lowres + PADH*2;
         int height = ref->i_lines_lowres + PADV*2;
 
-        for( int i = 0; i < 3; i++ )
+        int numrefs = 1;
+        if ( h->param.analyse.i_weighted_pred == X264_WEIGHTP_SMART )
+            numrefs = 3;
+
+        for( int i = 0; i < numrefs; i++ )
         {
             pixel *dst = h->mb.p_weight_buf[i];
 
             x264_weight_scale_plane( h, dst, ref->i_stride_lowres, src, ref->i_stride_lowres,
-                                    width, height, &fenc->tempweight[0][i][0] );
+                                     width, height, &fenc->weight[i][0] );
             fenc->weighted[i] = h->mb.p_weight_buf[i] + PADH + ref->i_stride_lowres * PADV;
         }
     }
