@@ -447,7 +447,11 @@ int x264_reference_build_list_optimal( x264_t *h )
     memcpy( frames, h->fref[0], sizeof(frames) );
     memcpy( refcount, rce->refcount, sizeof(refcount) );
     memcpy( weights, h->fenc->weight, sizeof(weights) );
-    memset( &h->fenc->weight[3][0], 0, sizeof(x264_weight_t[13][3]) );
+    // FIXME: Does this even do anything which has not already been done, or will be done later?
+    if ( h->param.analyse.i_weighted_pred == X264_WEIGHTP_KMEAN )
+        memset( &h->fenc->weight[X264_DUPS_MAX][0], 0, sizeof(x264_weight_t[16-X264_DUPS_MAX][3]) );
+    else
+        memset( &h->fenc->weight[1][0], 0, sizeof(x264_weight_t[15][3]) );
 
     /* For now don't reorder ref 0; it seems to lower quality
        in most cases due to skips. */

@@ -281,7 +281,9 @@ int x264_macroblock_cache_allocate( x264_t *h )
     {
         int i_refs = X264_MIN(X264_REF_MAX, (i ? 1 + !!h->param.i_bframe_pyramid : h->param.i_frame_reference) ) << PARAM_INTERLACED;
         if( h->param.analyse.i_weighted_pred == X264_WEIGHTP_SMART )
-            i_refs = X264_MIN(X264_REF_MAX, i_refs + 3); //smart weights add two duplicate frames, one in >8-bit
+            i_refs = X264_MIN(X264_REF_MAX, i_refs + 1 + (BIT_DEPTH == 8)); //smart weights add two duplicate frames, one in >8-bit
+        else if( h->param.analyse.i_weighted_pred == X264_WEIGHTP_KMEAN )
+            i_refs = X264_MIN(X264_REF_MAX, i_refs + X264_DUPS_MAX ); //kmean weights add X264_DUPS_MAX weights
 
         for( int j = !i; j < i_refs; j++ )
         {
@@ -317,8 +319,10 @@ int x264_macroblock_cache_allocate( x264_t *h )
             luma_plane_size = h->fdec->i_stride[0] * (h->mb.i_mb_height*(16<<(CHROMA_FORMAT==CHROMA_422))+2*i_padv);
 
             if( h->param.analyse.i_weighted_pred == X264_WEIGHTP_SMART )
-                // Insert 3 weighted frames
-                numweightbuf = 3;
+                //smart can weight one ref and one offset -1 in 8-bit
+                numweightbuf = 1 + (BIT_DEPTH == 8);
+            else if( h->param.analyse.i_weighted_pred == X264_WEIGHTP_KMEAN )
+                numweightbuf = X264_DUPS_MAX;
             else
                 //simple only has one weighted ref
                 numweightbuf = 1;
@@ -456,7 +460,7 @@ void x264_macroblock_slice_init( x264_t *h )
     }
     else if( h->sh.i_type == SLICE_TYPE_P )
     {
-        if( h->sh.i_disable_deblocking_filter_idc != 1 && h->param.analyse.i_weighted_pred == X264_WEIGHTP_SMART )
+        if( h->sh.i_disable_deblocking_filter_idc != 1 && h->param.analyse.i_weighted_pred >= X264_WEIGHTP_SMART )
         {
             deblock_ref_table(-2) = -2;
             deblock_ref_table(-1) = -1;
@@ -1541,7 +1545,7 @@ void x264_macroblock_deblock_strength( x264_t *h )
         }
     }
 
-    if( h->param.analyse.i_weighted_pred == X264_WEIGHTP_SMART && h->sh.i_type == SLICE_TYPE_P )
+    if( h->param.analyse.i_weighted_pred >= X264_WEIGHTP_SMART && h->sh.i_type == SLICE_TYPE_P )
     {
         /* Handle reference frame duplicates */
         int i8 = x264_scan8[0] - 8;

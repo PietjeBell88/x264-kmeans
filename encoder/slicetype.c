@@ -282,18 +282,15 @@ static void x264_weights_analyse( x264_t *h, x264_frame_t *fenc, x264_frame_t *r
     /* epsilon is chosen to require at least a numerator of 127 (with denominator = 128) */
     const float epsilon = 1.f/128.f;
     x264_weight_t *weights = fenc->weight[0];
-    SET_WEIGHT( weights[0], 0, 1, 0, 0 );
-    SET_WEIGHT( weights[1], 0, 1, 0, 0 );
-    SET_WEIGHT( weights[2], 0, 1, 0, 0 );
 
-    // Not sure if we have to do this seeing as they are set later anyway
-    SET_WEIGHT( fenc->weight[1][0], 0, 1, 0, 0 );
-    SET_WEIGHT( fenc->weight[2][1], 0, 1, 0, 0 );
-    SET_WEIGHT( fenc->weight[3][2], 0, 1, 0, 0 );
-    SET_WEIGHT( fenc->weight[2][0], 0, 1, 0, 0 );
-    SET_WEIGHT( fenc->weight[3][1], 0, 1, 0, 0 );
-    SET_WEIGHT( fenc->weight[3][2], 0, 1, 0, 0 );
-
+    int b_kmeans = (h->param.analyse.i_weighted_pred == X264_WEIGHTP_KMEAN);
+    // FIXME: Not sure if we have to do this seeing as they are set later anyway
+    for( int i = 0; i <= (X264_DUPS_MAX-1) * b_kmeans; i++ )
+    {
+        SET_WEIGHT( fenc->weight[i][0], 0, 1, 0, 0 );
+        SET_WEIGHT( fenc->weight[i][1], 0, 1, 0, 0 );
+        SET_WEIGHT( fenc->weight[i][2], 0, 1, 0, 0 );
+    }
     int chroma_initted = 0;
     /* Don't check chroma in lookahead, or if there wasn't a luma weight. */
     for( int plane = 0; plane <= 2 && !( plane && ( !weights[0].weightfn || b_lookahead ) ); plane++ )
@@ -398,17 +395,15 @@ static void x264_weights_analyse( x264_t *h, x264_frame_t *fenc, x264_frame_t *r
         if( !found || (minscale == 1 << mindenom && minoff == 0) || (float)minscore / origscore > 0.998f )
         {
             SET_WEIGHT( weights[plane], 0, 1, 0, 0 );
-            SET_WEIGHT( fenc->weight[1][plane], 0, 1, 0, 0 );
-            SET_WEIGHT( fenc->weight[2][plane], 0, 1, 0, 0 );
             continue;
         }
         else
         {
-            // Insert three duplicates.. -1, 0, +1 offset from the "ideal"
             SET_WEIGHT( weights[plane], 1, minscale, mindenom, minoff );
-            if ( minoff > -128 )
+            // If we have kmeans, insert two more
+            if ( b_kmeans && minoff > -128 )
                 SET_WEIGHT( fenc->weight[1][plane], 1, minscale, mindenom, minoff-1 );
-            if ( minoff < 127 )
+            if ( b_kmeans && minoff < 127 )
                 SET_WEIGHT( fenc->weight[2][plane], 1, minscale, mindenom, minoff+1 );
         }
 
@@ -436,11 +431,7 @@ static void x264_weights_analyse( x264_t *h, x264_frame_t *fenc, x264_frame_t *r
         int width = ref->i_width_lowres + PADH*2;
         int height = ref->i_lines_lowres + PADV*2;
 
-        int numrefs = 1;
-        if ( h->param.analyse.i_weighted_pred == X264_WEIGHTP_SMART )
-            numrefs = 3;
-
-        for( int i = 0; i < numrefs; i++ )
+        for( int i = 0; i <= (X264_DUPS_MAX-1) * b_kmeans; i++ )
         {
             pixel *dst = h->mb.p_weight_buf[i];
 
