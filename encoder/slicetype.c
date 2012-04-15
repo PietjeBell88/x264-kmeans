@@ -657,19 +657,25 @@ static void x264_weights_kmeans( x264_t *h, x264_frame_t *fenc, pixel *mcbuf, ui
 #endif
     int score = x264_kmeans_search( h, weights, mcbuf, fenc_plane, offsets, i_stride, refcosts, i_mb, X264_DUPS_MAX, centroids );
 
-#if KMEANS_DEBUG
+#if 0
+    printf( "Origscore %7d,    Score %7d     \n", origscore, score );
     if ( (float)score / origscore < 0.998f )
         printf( "KMEANS FOUND SOME GOOD WEIGHTS               \n" );
 #endif
+
     // Copy the centroids to actual weights:
     for( int i = 0; i < X264_DUPS_MAX; i++ )
     {
-        if( (float)score / origscore > 0.998f || centroids[i][0] == -1 )
+        if( (float)score / origscore > 1.998f || centroids[i][0] == -1 )
         {
             SET_WEIGHT( fenc->weight[i][0], 0, 1, 0, 0 );
         }
         else
+        {
+            SET_WEIGHT( fenc->weight[i][0], 1, 1, 0, 0 );
             x264_weight_get_h264( centroids[i][0], centroids[i][1], &fenc->weight[i][0] );
+            //PRINT_WEIGHT( fenc->weight[i][0] );
+        }
     }
 
     free( weights );
@@ -828,15 +834,16 @@ static void x264_weights_analyse( x264_t *h, x264_frame_t *fenc, x264_frame_t *r
         }
     }
 
-    if( weights[0].weightfn && b_lookahead )
+    if( b_lookahead )
     {
         //scale lowres in lookahead for slicetype_frame_cost
-        pixel *src = ref->buffer_lowres[0];
+
         int width = ref->i_width_lowres + PADH*2;
         int height = ref->i_lines_lowres + PADV*2;
 
-        for( int i = 0; i <= (X264_DUPS_MAX-1) * b_kmeans; i++ )
+        for( int i = 0; i <= (X264_DUPS_MAX-1) * b_kmeans && fenc->weight[i][0].weightfn; i++ )
         {
+            pixel *src = ref->buffer_lowres[0];
             pixel *dst = h->mb.p_weight_buf[i];
 
             x264_weight_scale_plane( h, dst, ref->i_stride_lowres, src, ref->i_stride_lowres,
