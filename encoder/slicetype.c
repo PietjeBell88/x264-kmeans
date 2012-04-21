@@ -57,7 +57,7 @@ static void x264_lowres_context_init( x264_t *h, x264_mb_analysis_t *a )
 /* makes a non-h264 weight (i.e. fix7), into an h264 weight */
 static void x264_weight_get_h264( int weight_nonh264, int offset, x264_weight_t *w )
 {
-    w->i_offset = offset;
+    w->i_offset = x264_clip3( offset, -128, 127 );
     w->i_denom = 7;
     w->i_scale = weight_nonh264;
     while( w->i_denom > 0 && (w->i_scale > 127 || !(w->i_scale & 1)) )
@@ -285,6 +285,7 @@ static NOINLINE unsigned int x264_weight_cost_chroma444( x264_t *h, x264_frame_t
     x264_weight_t w_temp;\
     memcpy( &w_temp, &weights[i_mb], sizeof(x264_weight_t) );\
     x264_weight_get_h264( c[0], c[1], &w_temp );\
+    h->mc.weight_cache( h, &w_temp );\
 \
     w_temp.weightfn[8>>2]( buf, 8, &ref_plane[offsets[i_mb]], i_stride, &w_temp, 8 );\
     cost = h->pixf.mbcmp[PIXEL_8x8]( buf, 8, &fenc_plane[offsets[i_mb]], i_stride );\
@@ -321,7 +322,7 @@ static void print_statistics(int count[], int centroids[X264_DUPS_MAX][2] )
 #endif
 
 static int x264_kmeans_search( x264_t *h, const x264_weight_t *weights, pixel *ref_plane, pixel *fenc_plane, int *offsets,
-                               int i_stride, uint16_t *refcosts, int num_mbs, int num_dups, int centroids[X264_DUPS_MAX][2] )
+                               int i_stride, uint16_t *refcosts, uint16_t *intra_costs, int num_mbs, int num_dups, int centroids[X264_DUPS_MAX][2] )
 {
     assert( num_dups <= X264_DUPS_MAX );
 
@@ -646,7 +647,8 @@ static void x264_weights_kmeans( x264_t *h, x264_frame_t *fenc, pixel *mcbuf, ui
             // And scale back to not confuse kmeans (i.e. let kmeans deal with scales but not denom):
             weight->i_scale = weight->i_scale << (7 - weight->i_denom);
             weight->i_denom = 7;
-            weight->i_offset = fenc_mean - (float)ref_mean * weight->i_scale / (1 << weight->i_denom) + 0.5f;
+            // FIXME: What to do with the hueg offsets? Try more brute-force?
+            weight->i_offset = x264_clip3(fenc_mean - (float)ref_mean * weight->i_scale / (1 << weight->i_denom) + 0.5f, -128, 127);
             h->mc.weight_cache( h, weight );
         }
 
@@ -655,7 +657,7 @@ static void x264_weights_kmeans( x264_t *h, x264_frame_t *fenc, pixel *mcbuf, ui
 #if KMEANS_DEBUG
     printf( "Num_mbs guess: %d (should be %d)\n", num_mbs_guess, i_mb );
 #endif
-    int score = x264_kmeans_search( h, weights, mcbuf, fenc_plane, offsets, i_stride, refcosts, i_mb, X264_DUPS_MAX, centroids );
+    int score = x264_kmeans_search( h, weights, mcbuf, fenc_plane, offsets, i_stride, refcosts, fenc->i_intra_cost, i_mb, X264_DUPS_MAX, centroids );
 
 #if 0
     printf( "Origscore %7d,    Score %7d     \n", origscore, score );
@@ -666,15 +668,14 @@ static void x264_weights_kmeans( x264_t *h, x264_frame_t *fenc, pixel *mcbuf, ui
     // Copy the centroids to actual weights:
     for( int i = 0; i < X264_DUPS_MAX; i++ )
     {
-        if( (float)score / origscore > 1.998f || centroids[i][0] == -1 )
+        if( centroids[i][0] == -1 )
         {
             SET_WEIGHT( fenc->weight[i][0], 0, 1, 0, 0 );
         }
         else
         {
-            SET_WEIGHT( fenc->weight[i][0], 1, 1, 0, 0 );
             x264_weight_get_h264( centroids[i][0], centroids[i][1], &fenc->weight[i][0] );
-            //PRINT_WEIGHT( fenc->weight[i][0] );
+            h->mc.weight_cache( h, &fenc->weight[i][0] );
         }
     }
 
