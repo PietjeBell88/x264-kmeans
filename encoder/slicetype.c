@@ -415,6 +415,11 @@ static int x264_kmeans_search( x264_t *h, const x264_weight_t *weights, pixel *r
                     kmean_mb[i] = j;
                     mindistance = distance;
                 }
+                if ( intra_costs[i] < mindistance )
+                {
+                    mindistance = intra_costs[i];
+                    kmean_mb[i] = -1;
+                }
             }
             score += mindistance;
         }
