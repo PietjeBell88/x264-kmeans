@@ -1875,12 +1875,6 @@ static inline void x264_reference_build_list( x264_t *h, int i_poc )
             }
             for ( int i = 0; h->fenc->weight[i][0].weightfn && i < X264_DUPS_MAX; i++ )
             {
-                if( h->fenc->weight[i][0].i_scale == 1<<h->fenc->weight[i][0].i_denom )
-                {
-                    //printf( "Kom hier voor een SET_WEIGHT                          \n" );
-
-                    SET_WEIGHT( h->fenc->weight[i][0], 1, 1, 0, h->fenc->weight[i][0].i_offset );
-                }
                 x264_weighted_reference_duplicate( h, 0, x264_weight_none );
             }
             idx = -1;
