@@ -301,7 +301,7 @@ static void print_statistics(int count[], int centroids[X264_DUPS_MAX][2] )
 }
 #endif
 
-static int kmeans_weight_h264_centroids( const int num_dups, int centroids[X264_DUPS_MAX][2], int *denom_out )
+static void kmeans_weight_h264_centroids( const int num_dups, int centroids[X264_DUPS_MAX][2], int *denom_out )
 {
     int denom = 7;
 
@@ -338,10 +338,6 @@ static int kmeans_weight_h264_centroids( const int num_dups, int centroids[X264_
         }
         denom = X264_MAX( denom, shift );
     }
-
-    // Scale all the weights with the appropriate denom
-    for( int i = 0; i < num_dups; i++ )
-        centroids[i][0] >>= (7-denom);
 
     *denom_out = denom;
 }
@@ -393,13 +389,20 @@ static int x264_kmeans_search( x264_t *h, const x264_weight_t *weights, pixel *r
     print_statistics( count, centroids );
 #endif
 
+    kmeans_weight_h264_centroids( num_dups, centroids, &denom );
+
+
+#if KMEANS_DEBUG
+    printf( "After h264 centroids!\n" );
+    memset( count, 0, sizeof(count) );
+    print_statistics( count, centroids );
+#endif
+
     // Loop until convergence
     int loop_count = 0; // Just to keep track of how long it takes
     while( 1 )
     {
         score = 0;
-
-        kmeans_weight_h264_centroids( num_dups, centroids, &denom );
 
         // Assign each mb to closest center
         for( int i = 0; i < num_mbs; i++ )
@@ -507,6 +510,13 @@ static int x264_kmeans_search( x264_t *h, const x264_weight_t *weights, pixel *r
                 }
             }
 
+            int z; // Amount of nonzero weights
+            for( z = 0; z < num_dups; z++ )
+                if ( count[z] == 0 || centroids[z][0] == -1 )
+                    break;
+
+            kmeans_weight_h264_centroids( z, centroids, &denom );
+
             // FIXME: Should the memcpy be here, or before the reordering?
             memcpy( bestcentroids, centroids, sizeof(bestcentroids) );
             memcpy( bestcount, count, sizeof(bestcount) );
@@ -600,6 +610,9 @@ static int x264_kmeans_search( x264_t *h, const x264_weight_t *weights, pixel *r
             }
         }
 
+        // Maybe we inserted new weights, so check again for the denominator
+        kmeans_weight_h264_centroids( num_dups, centroids, &denom );
+
         // Woop-ty-woop, another loop
         loop_count++;
     }
@@ -681,7 +694,7 @@ static void x264_weights_kmeans( x264_t *h, x264_frame_t *fenc, pixel *mcbuf, ui
         }
 
     int centroids[X264_DUPS_MAX][2]; // [n_clusters][scale/offset]
-    int denom;
+    int denom = 7;
 
 #if KMEANS_DEBUG
     printf( "Num_mbs guess: %d (should be %d)\n", num_mbs_guess, i_mb );
