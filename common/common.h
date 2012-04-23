@@ -82,11 +82,6 @@ do {\
 #define NALU_OVERHEAD 5 // startcode + NAL type costs 5 bytes per frame
 #define FILLER_OVERHEAD (NALU_OVERHEAD+1)
 
-#define PRINT_WEIGHT( w )\
-{\
-    printf( "LUMA:    denom %3d, scale %3d, offset %3d\n", w.i_denom, w.i_scale, w.i_offset );\
-}
-
 /****************************************************************************
  * Includes
  ****************************************************************************/

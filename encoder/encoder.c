@@ -291,8 +291,6 @@ static void x264_slice_header_write( bs_t *s, x264_slice_header_t *sh, int i_nal
         {
             int luma_weight_l0_flag = !!sh->weight[i][0].weightfn;
             int chroma_weight_l0_flag = !!sh->weight[i][1].weightfn || !!sh->weight[i][2].weightfn;
-            if ( luma_weight_l0_flag )
-                printf( "Inserting frame at %d with weight: denom %3d, scale = %3d, offset = %3d\n", i, sh->weight[i][0].i_denom, sh->weight[i][0].i_scale, sh->weight[i][0].i_offset );
             bs_write1( s, luma_weight_l0_flag );
             if( luma_weight_l0_flag )
             {
@@ -666,8 +664,7 @@ static int x264_validate_parameters( x264_t *h, int b_open )
         /* Don't use I-frames, because Blu-ray treats them the same as IDR. */
         h->param.i_keyint_min = 1;
         /* Due to the proliferation of broken players that don't handle dupes properly. */
-        // FIXME: Kmeans is okay here or not?
-        h->param.analyse.i_weighted_pred = X264_MIN( h->param.analyse.i_weighted_pred, X264_WEIGHTP_KMEAN );
+        h->param.analyse.i_weighted_pred = X264_MIN( h->param.analyse.i_weighted_pred, X264_WEIGHTP_SIMPLE );
         if( h->param.b_fake_interlaced )
             h->param.b_pic_struct = 1;
     }
@@ -1695,13 +1692,7 @@ static void x264_weighted_pred_init( x264_t *h )
             if( h->fenc->weight[j][i].weightfn )
             {
                 h->sh.weight[j][i] = h->fenc->weight[j][i];
-                //printf( "Weight sh   j=%d    i=%d\n", j, i );
-                //PRINT_WEIGHT( h->sh.weight[j][0] );
                 // if weight is useless, don't write it to stream
-                // FIXME: Do this check in kmeans as well, so we don't throw away possible useful weights
-                // FIXME: The original reference frame is kept, so reorder frames such that the scale=1, offset=0 one is
-                // in the desired position.
-                // scales that are powers of two and have no offset are useless
                 if( h->sh.weight[j][i].i_scale == 1<<h->sh.weight[j][i].i_denom && h->sh.weight[j][i].i_offset == 0 )
                     h->sh.weight[j][i].weightfn = NULL;
                 else
@@ -1714,7 +1705,6 @@ static void x264_weighted_pred_init( x264_t *h )
                     }
 
                     assert( h->sh.weight[j][i].i_denom == denom );
-
                     if( !i )
                     {
                         h->fenc->weighted[j] = h->mb.p_weight_buf[buffer_next++] + h->fenc->i_stride[0] * i_padv + PADH;
@@ -1869,15 +1859,13 @@ static inline void x264_reference_build_list( x264_t *h, int i_poc )
 
             if( !h->fenc->weight[0][0].weightfn )
             {
-                //printf( "Kom hier voor een -1                          \n" );
                 SET_WEIGHT( w[0], 1, 1, 0, -1 );
-                x264_weighted_reference_duplicate( h, 0, w );
+                idx = x264_weighted_reference_duplicate( h, 0, w );
             }
             for ( int i = 0; h->fenc->weight[i][0].weightfn && i < X264_DUPS_MAX; i++ )
             {
                 x264_weighted_reference_duplicate( h, 0, x264_weight_none );
             }
-            idx = -1;
         }
         h->mb.ref_blind_dupe = idx;
     }
