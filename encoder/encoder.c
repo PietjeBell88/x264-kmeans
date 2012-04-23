@@ -1184,7 +1184,7 @@ x264_t *x264_encoder_open( x264_param_t *param )
     CHECKED_MALLOCZERO( h->frames.current, (h->param.i_sync_lookahead + h->param.i_bframe
                         + h->i_thread_frames + 3) * sizeof(x264_frame_t *) );
     if( h->param.analyse.i_weighted_pred > 0 )
-        CHECKED_MALLOCZERO( h->frames.blank_unused, h->i_thread_frames * 4 * sizeof(x264_frame_t *) );
+        CHECKED_MALLOCZERO( h->frames.blank_unused, h->i_thread_frames * (X264_DUPS_MAX + 4) * sizeof(x264_frame_t *) );
     h->i_ref[0] = h->i_ref[1] = 0;
     h->i_cpb_delay = h->i_coded_fields = h->i_disp_fields = 0;
     h->i_prev_duration = ((uint64_t)h->param.i_fps_den * h->sps->vui.i_time_scale) / ((uint64_t)h->param.i_fps_num * h->sps->vui.i_num_units_in_tick);
