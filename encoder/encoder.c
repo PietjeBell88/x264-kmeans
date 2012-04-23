@@ -3352,7 +3352,7 @@ static int x264_encoder_frame_end( x264_t *h, x264_t *thread_current,
         h->stat.i_mb_field[i] += h->stat.frame.i_mb_field[i];
     if( h->sh.i_type == SLICE_TYPE_P && h->param.analyse.i_weighted_pred >= X264_WEIGHTP_SIMPLE )
     {
-        h->stat.i_wpred[0] += !!h->sh.weight[0][0].weightfn;
+        h->stat.i_wpred[0] += !!h->sh.weight[0][0].weightfn || !!h->sh.weight[1][0].weightfn;
         h->stat.i_wpred[1] += !!h->sh.weight[0][1].weightfn || !!h->sh.weight[0][2].weightfn;
     }
     if( h->sh.i_type == SLICE_TYPE_B )
