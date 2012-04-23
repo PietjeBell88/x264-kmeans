@@ -697,7 +697,7 @@ static void x264_weights_kmeans( x264_t *h, x264_frame_t *fenc, pixel *mcbuf, ui
     // Copy the centroids to actual weights:
     for( int i = 0; i < X264_DUPS_MAX; i++ )
     {
-        if( centroids[i][0] == -1 )
+        if( centroids[i][0] == -1 || (float)score / origscore < 0.998f )
         {
             SET_WEIGHT( fenc->weight[i][0], 0, 1, 0, 0 );
         }
