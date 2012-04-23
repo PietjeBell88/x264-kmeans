@@ -283,31 +283,11 @@ static NOINLINE unsigned int x264_weight_cost_chroma444( x264_t *h, x264_frame_t
 #define DISTANCE( cost, c, i_mb, refindex )\
 {\
     x264_weight_t w_temp;\
-    memcpy( &w_temp, &weights[i_mb], sizeof(x264_weight_t) );\
-    x264_weight_get_h264( c[0], c[1], &w_temp );\
-    h->mc.weight_cache( h, &w_temp );\
-\
+    SET_WEIGHT( w_temp, 1, c[0] >> (7-denom), denom, c[1] );\
     w_temp.weightfn[8>>2]( buf, 8, &ref_plane[offsets[i_mb]], i_stride, &w_temp, 8 );\
     cost = h->pixf.mbcmp[PIXEL_8x8]( buf, 8, &fenc_plane[offsets[i_mb]], i_stride );\
     if ( refcosts != NULL )\
         cost += refcosts[ ( refindex + 1 ) * 2 ];\
-}
-
-static int scale_descale( int scale )
-{
-    // To not deal with denom, we scale and descale here
-    // scale values that are impossible in the >127 range:  129, 131, ..., 257, 258, 259, ..., 513, 514, 515, 516, 517, 518, 519, ...
-    // scale values that are possible in the >127 range: 128, 130,  ..., 256, 260, 264, .... 512, 520, 528, ...
-    // FIXME: Probably only have to check for the range 128-255
-    int shift_count = 0;
-    while( scale > 127 )
-    {
-        shift_count++;
-        scale >>= 1;
-    }
-    scale <<= shift_count;
-
-    return scale;
 }
 
 #define KMEANS_DEBUG 0
@@ -321,12 +301,58 @@ static void print_statistics(int count[], int centroids[X264_DUPS_MAX][2] )
 }
 #endif
 
+static int kmeans_weight_h264_centroids( const int num_dups, int centroids[X264_DUPS_MAX][2], int *denom_out )
+{
+    int denom = 7;
+
+    // First find the denominator we need to get the largest scale to less than 127:
+    for( int i = 0; i < num_dups; i++ )
+    {
+        int shift = 7;
+        int scale = centroids[i][0];
+        while( shift > 0 && scale > 127 )
+        {
+            shift--;
+            scale >>= 1;
+        }
+        denom = X264_MIN( denom, shift );
+    }
+
+    // Scale all the weights appropriately
+    for( int i = 0; i < num_dups; i++ )
+    {
+        centroids[i][0] >>= (7-denom);
+        centroids[i][0] <<= (7-denom);
+    }
+
+    // Find the smallest denominator that keeps the resolution
+    denom = 0;
+    for( int i = 0; i < num_dups; i++ )
+    {
+        int shift = 7;
+        int scale = centroids[i][0];
+        while( shift > 0 && !(scale & 1) )
+        {
+            shift--;
+            scale >>= 1;
+        }
+        denom = X264_MAX( denom, shift );
+    }
+
+    // Scale all the weights with the appropriate denom
+    for( int i = 0; i < num_dups; i++ )
+        centroids[i][0] >>= (7-denom);
+
+    *denom_out = denom;
+}
+
 static int x264_kmeans_search( x264_t *h, const x264_weight_t *weights, pixel *ref_plane, pixel *fenc_plane, int *offsets,
-                               int i_stride, uint16_t *refcosts, uint16_t *intra_costs, int num_mbs, int num_dups, int centroids[X264_DUPS_MAX][2] )
+                               int i_stride, uint16_t *refcosts, uint16_t *intra_costs, int num_mbs, int num_dups, int centroids[X264_DUPS_MAX][2], int *bestdenom )
 {
     assert( num_dups <= X264_DUPS_MAX );
 
     int bestcentroids[X264_DUPS_MAX][2];
+    int denom;
     int score = 0, bestscore = INT_MAX;
 
     int timesincebest = 0;
@@ -372,6 +398,8 @@ static int x264_kmeans_search( x264_t *h, const x264_weight_t *weights, pixel *r
     while( 1 )
     {
         score = 0;
+
+        kmeans_weight_h264_centroids( num_dups, centroids, &denom );
 
         // Assign each mb to closest center
         for( int i = 0; i < num_mbs; i++ )
@@ -421,16 +449,14 @@ static int x264_kmeans_search( x264_t *h, const x264_weight_t *weights, pixel *r
 
         int tmp_cost = 0;
         int tmp_refindex = 0;
+
+        tmp_cost += bs_size_ue( denom );
         for( int i = 0; i < num_dups; i++ )
             if( centroids[i][0] != -1 )
             {
-                // Use the actual denominator (not always 7) and scale
-                x264_weight_t w_temp;
-                x264_weight_get_h264( centroids[i][0], centroids[i][1], &w_temp );
-
-                tmp_cost += bs_size_ue( w_temp.i_denom );
-                tmp_cost += bs_size_se( w_temp.i_scale );
-                tmp_cost += bs_size_se( w_temp.i_offset );
+                // Use the actual scale to calculate the cost
+                tmp_cost += bs_size_se( centroids[i][0] >> (7-denom) );
+                tmp_cost += bs_size_se( centroids[i][1] );
 
                 // No clue where in the spec these numbers are
                 if( tmp_refindex == 1 )
@@ -477,8 +503,9 @@ static int x264_kmeans_search( x264_t *h, const x264_weight_t *weights, pixel *r
             }
 
             // FIXME: Should the memcpy be here, or before the reordering?
-            memcpy( bestcentroids, centroids, sizeof(bestcentroids) ) ;
-            memcpy( bestcount, count, sizeof(bestcount) ) ;
+            memcpy( bestcentroids, centroids, sizeof(bestcentroids) );
+            memcpy( bestcount, count, sizeof(bestcount) );
+            *bestdenom = denom;
             bestscore = score;
             timesincebest = 0;
         }
@@ -523,10 +550,6 @@ static int x264_kmeans_search( x264_t *h, const x264_weight_t *weights, pixel *r
         else if( timesincebest > 3 )
             finished = 1;
 
-        // Scale/descale the centroids
-        for( int i = 0; i < num_dups; i++ )
-            if( centroids[i][0] > 128 )
-                centroids[i][0] = scale_descale( centroids[i][0] );
 
         if ( finished )
             break;
@@ -653,11 +676,12 @@ static void x264_weights_kmeans( x264_t *h, x264_frame_t *fenc, pixel *mcbuf, ui
         }
 
     int centroids[X264_DUPS_MAX][2]; // [n_clusters][scale/offset]
+    int denom;
 
 #if KMEANS_DEBUG
     printf( "Num_mbs guess: %d (should be %d)\n", num_mbs_guess, i_mb );
 #endif
-    int score = x264_kmeans_search( h, weights, mcbuf, fenc_plane, offsets, i_stride, refcosts, fenc->i_intra_cost, i_mb, X264_DUPS_MAX, centroids );
+    int score = x264_kmeans_search( h, weights, mcbuf, fenc_plane, offsets, i_stride, refcosts, fenc->i_intra_cost, i_mb, X264_DUPS_MAX, centroids, &denom );
 
 #if 0
     printf( "Origscore %7d,    Score %7d     \n", origscore, score );
@@ -674,8 +698,7 @@ static void x264_weights_kmeans( x264_t *h, x264_frame_t *fenc, pixel *mcbuf, ui
         }
         else
         {
-            x264_weight_get_h264( centroids[i][0], centroids[i][1], &fenc->weight[i][0] );
-            h->mc.weight_cache( h, &fenc->weight[i][0] );
+            SET_WEIGHT( fenc->weight[i][0], 1, centroids[i][0] >> (7-denom), denom, centroids[i][1] );
         }
     }
 

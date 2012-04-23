@@ -1707,14 +1707,13 @@ static void x264_weighted_pred_init( x264_t *h )
                 else
                 {
                     if( !weightplane[!!i] )
+                    {
                         weightplane[!!i] = 1;
-
-                    h->sh.weight[0][!!i].i_denom = denom = h->sh.weight[j][i].i_denom;
+                        h->sh.weight[0][!!i].i_denom = denom = h->sh.weight[j][i].i_denom;
                         assert( x264_clip3( denom, 0, 7 ) == denom );
+                    }
 
-                    // Make sure that chroma planes have the same denominator
-                    if ( i == 3 )
-                        assert( h->sh.weight[j][3].i_denom == h->sh.weight[j][2].i_denom );
+                    assert( h->sh.weight[j][i].i_denom == denom );
 
                     if( !i )
                     {
