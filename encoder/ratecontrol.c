@@ -52,7 +52,7 @@ typedef struct
     int s_count;
     float blurred_complexity;
     char direct_mode;
-    int16_t weight[3][2];
+    int16_t weight[X264_DUPS_MAX+2][2];
     int16_t i_weight_denom[2];
     int refcount[16];
     int refs;
@@ -929,17 +929,42 @@ int x264_ratecontrol_new( x264_t *h )
 
             /* find weights */
             rce->i_weight_denom[0] = rce->i_weight_denom[1] = -1;
+
+            for( int r = 0; r < X264_DUPS_MAX; r++ )
+                rce->weight[r][0] = -1;
+
             char *w = strchr( p, 'w' );
             if( w )
             {
-                int count = sscanf( w, "w:%hd,%hd,%hd,%hd,%hd,%hd,%hd,%hd",
-                                    &rce->i_weight_denom[0], &rce->weight[0][0], &rce->weight[0][1],
-                                    &rce->i_weight_denom[1], &rce->weight[1][0], &rce->weight[1][1],
-                                    &rce->weight[2][0], &rce->weight[2][1] );
-                if( count == 3 )
+                // First load the denominator
+                char *pch = strtok( &w[2], "," );
+                int count = sscanf( pch, "%hd", &rce->i_weight_denom[0] );
+
+                pch = strtok( NULL, "," );
+
+                for( int r = 0; r < X264_DUPS_MAX && pch; r++ )
+                {
+                    count = sscanf( pch, "%hd", &rce->weight[r][0] );
+                    pch = strtok( NULL, "," );
+                    count += sscanf( pch, "%hd", &rce->weight[r][1] );
+                    if ( count != 2 )
+                    {
+                        rce->weight[r][0] = -1;
+                        rce->weight[r][0] = 0;
+                        break;
+                    }
+                    pch = strtok ( NULL, "," );
+                }
+            }
+
+            w = strchr( w, 'u' );
+            if( w )
+            {
+                int count = sscanf( w, "u:%hd,%hd,%hd,%hd,%hd",
+                                    &rce->i_weight_denom[1], &rce->weight[X264_DUPS_MAX][0], &rce->weight[X264_DUPS_MAX][1],
+                                    &rce->weight[X264_DUPS_MAX+1][0], &rce->weight[X264_DUPS_MAX+1][1] );
+                if( count != 5 )
                     rce->i_weight_denom[1] = -1;
-                else if ( count != 8 )
-                    rce->i_weight_denom[0] = rce->i_weight_denom[1] = -1;
             }
 
             if( pict_type != 'b' )
@@ -1620,9 +1645,10 @@ void x264_ratecontrol_set_weights( x264_t *h, x264_frame_t *frm )
     if( h->param.analyse.i_weighted_pred <= 0 )
         return;
 
-    if( rce->i_weight_denom[0] >= 0 )
-        SET_WEIGHT( frm->weight[0][0], 1, rce->weight[0][0], rce->i_weight_denom[0], rce->weight[0][1] );
-
+    for( int i = 0; rce->i_weight_denom[0] >= 0 && i < X264_DUPS_MAX; i++ )
+    {
+        SET_WEIGHT( frm->weight[i][0], !(rce->weight[i][0] == -1), rce->weight[i][0], rce->i_weight_denom[0], rce->weight[i][1] );
+    }
     if( rce->i_weight_denom[1] >= 0 )
     {
         SET_WEIGHT( frm->weight[0][1], 1, rce->weight[1][0], rce->i_weight_denom[1], rce->weight[1][1] );
@@ -1684,14 +1710,21 @@ int x264_ratecontrol_end( x264_t *h, int bits, int *filler )
                 goto fail;
         }
 
-        if( h->param.analyse.i_weighted_pred >= X264_WEIGHTP_SIMPLE && h->sh.weight[0][0].weightfn )
+        if( h->param.analyse.i_weighted_pred >= X264_WEIGHTP_SIMPLE )
         {
-            if( fprintf( rc->p_stat_file_out, "w:%d,%d,%d",
-                         h->sh.weight[0][0].i_denom, h->sh.weight[0][0].i_scale, h->sh.weight[0][0].i_offset ) < 0 )
+            if( fprintf( rc->p_stat_file_out, "w:%d", h->sh.weight[0][0].i_denom ) < 0 )
                 goto fail;
+
+            for( int r = 0; r < X264_DUPS_MAX && h->sh.weight[r][0].weightfn; r++ )
+            {
+                if( fprintf( rc->p_stat_file_out, ",%d,%d",
+                    h->sh.weight[r][0].i_scale, h->sh.weight[r][0].i_offset ) < 0 )
+                    goto fail;
+            }
+
             if( h->sh.weight[0][1].weightfn || h->sh.weight[0][2].weightfn )
             {
-                if( fprintf( rc->p_stat_file_out, ",%d,%d,%d,%d,%d ",
+                if( fprintf( rc->p_stat_file_out, " u:%d,%d,%d,%d,%d ",
                              h->sh.weight[0][1].i_denom, h->sh.weight[0][1].i_scale, h->sh.weight[0][1].i_offset,
                              h->sh.weight[0][2].i_scale, h->sh.weight[0][2].i_offset ) < 0 )
                     goto fail;
