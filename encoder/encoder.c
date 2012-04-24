@@ -1634,7 +1634,7 @@ int x264_weighted_reference_duplicate( x264_t *h, int i_ref, const x264_weight_t
     int i = h->i_ref[0];
     int j = 1;
     x264_frame_t *newframe;
-    if( i <= 1 ) /* empty list, definitely can't duplicate frame */
+    if( i < 1 ) /* empty list, definitely can't duplicate frame */
         return -1;
 
     //Duplication is only used in X264_WEIGHTP_SMART and X264_WEIGHTP_KMEAN
