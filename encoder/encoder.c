@@ -1634,7 +1634,10 @@ int x264_weighted_reference_duplicate( x264_t *h, int i_ref, const x264_weight_t
     int i = h->i_ref[0];
     int j = 1;
     x264_frame_t *newframe;
-    if( i < 1 ) /* empty list, definitely can't duplicate frame */
+    /* If the list is empty, we can't duplicate frames.
+     * For weightp modes other than kmeans, also don't insert dupes when there is only one reference frame.
+     * Do note that this reference frame will still be weighted. */
+    if ( i < 1 || (h->param.analyse.i_weighted_pred != X264_WEIGHTP_KMEAN && i <= 1) )
         return -1;
 
     //Duplication is only used in X264_WEIGHTP_SMART and X264_WEIGHTP_KMEAN

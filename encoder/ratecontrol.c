@@ -934,8 +934,10 @@ int x264_ratecontrol_new( x264_t *h )
                 rce->weight[r][0] = -1;
 
             char *w = strchr( p, 'w' );
+
             if( w )
             {
+                w = strndup( w, strcspn( w, "u" ) );
                 // First load the denominator
                 char *pch = strtok( &w[2], "," );
                 int count = sscanf( pch, "%hd", &rce->i_weight_denom[0] );
@@ -953,11 +955,13 @@ int x264_ratecontrol_new( x264_t *h )
                         rce->weight[r][0] = 0;
                         break;
                     }
-                    pch = strtok ( NULL, "," );
+                    pch = strtok( NULL, "," );
                 }
+                free( w );
             }
 
-            w = strchr( w, 'u' );
+            w = strchr( p, 'u' );
+
             if( w )
             {
                 int count = sscanf( w, "u:%hd,%hd,%hd,%hd,%hd",
@@ -1651,8 +1655,8 @@ void x264_ratecontrol_set_weights( x264_t *h, x264_frame_t *frm )
     }
     if( rce->i_weight_denom[1] >= 0 )
     {
-        SET_WEIGHT( frm->weight[0][1], 1, rce->weight[1][0], rce->i_weight_denom[1], rce->weight[1][1] );
-        SET_WEIGHT( frm->weight[0][2], 1, rce->weight[2][0], rce->i_weight_denom[1], rce->weight[2][1] );
+        SET_WEIGHT( frm->weight[0][1], 1, rce->weight[X264_DUPS_MAX][0], rce->i_weight_denom[1], rce->weight[X264_DUPS_MAX][1] );
+        SET_WEIGHT( frm->weight[0][2], 1, rce->weight[X264_DUPS_MAX+1][0], rce->i_weight_denom[1], rce->weight[X264_DUPS_MAX+1][1] );
     }
 }
 
