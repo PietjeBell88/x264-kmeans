@@ -283,7 +283,6 @@ static void x264_slice_header_write( bs_t *s, x264_slice_header_t *sh, int i_nal
     sh->b_weighted_pred = 0;
     if( sh->pps->b_weighted_pred && sh->i_type == SLICE_TYPE_P )
     {
-        sh->b_weighted_pred = sh->weight[0][0].weightfn || sh->weight[0][1].weightfn || sh->weight[0][2].weightfn;
         /* pred_weight_table() */
         bs_write_ue( s, sh->weight[0][0].i_denom );
         bs_write_ue( s, sh->weight[0][1].i_denom );
@@ -295,6 +294,9 @@ static void x264_slice_header_write( bs_t *s, x264_slice_header_t *sh, int i_nal
                 printf( "Inserting frame at %d with weight: denom %3d, scale = %3d, offset = %3d\n", i, sh->weight[i][0].i_denom, sh->weight[i][0].i_scale, sh->weight[i][0].i_offset );
 
             int chroma_weight_l0_flag = !!sh->weight[i][1].weightfn || !!sh->weight[i][2].weightfn;
+
+            sh->b_weighted_pred |= luma_weight_l0_flag || chroma_weight_l0_flag;
+
             if ( chroma_weight_l0_flag )
                 printf( "Inserting CHROMA at %d with weight: denom %3d, scale = %3d, offset = %3d\n", i, sh->weight[i][1].i_denom, sh->weight[i][1].i_scale, sh->weight[i][1].i_offset );
 
