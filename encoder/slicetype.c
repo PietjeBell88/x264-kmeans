@@ -554,7 +554,7 @@ static int x264_kmeans_search( x264_t *h, const x264_weight_t *weights, pixel *r
             // FIXME: This gives not very optimal new guesses I think, especially in the case of
             // offsets, which will sometimes all be estimated around zero. Maybe always go for the
             // "else" part.
-            if ( num_clusters > 0 )
+            if ( 0 )
             {
                 centroids[i][0] = ( sum_scale + num_clusters/2 ) / num_clusters;
                 centroids[i][1] = ( sum_offset + num_clusters/2 ) / num_clusters;
