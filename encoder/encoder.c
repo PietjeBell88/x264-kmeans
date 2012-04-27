@@ -290,15 +290,9 @@ static void x264_slice_header_write( bs_t *s, x264_slice_header_t *sh, int i_nal
         {
             int luma_weight_l0_flag = !!sh->weight[i][0].weightfn &&
                                       !(sh->weight[i][0].i_scale == 1<<sh->weight[i][0].i_denom && sh->weight[i][0].i_offset == 0);
-            if ( luma_weight_l0_flag )
-                printf( "Inserting frame at %d with weight: denom %3d, scale = %3d, offset = %3d\n", i, sh->weight[i][0].i_denom, sh->weight[i][0].i_scale, sh->weight[i][0].i_offset );
-
             int chroma_weight_l0_flag = !!sh->weight[i][1].weightfn || !!sh->weight[i][2].weightfn;
 
             sh->b_weighted_pred |= luma_weight_l0_flag || chroma_weight_l0_flag;
-
-            if ( chroma_weight_l0_flag )
-                printf( "Inserting CHROMA at %d with weight: denom %3d, scale = %3d, offset = %3d\n", i, sh->weight[i][1].i_denom, sh->weight[i][1].i_scale, sh->weight[i][1].i_offset );
 
             bs_write1( s, luma_weight_l0_flag );
             if( luma_weight_l0_flag )
