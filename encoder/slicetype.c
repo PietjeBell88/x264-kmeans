@@ -342,6 +342,9 @@ static int x264_kmeans_search( x264_t *h, const x264_weight_t *weights, pixel *r
     int count[X264_DUPS_MAX];     // Number of members a certain cluster/centroid has
     int bestcount[X264_DUPS_MAX];
 
+    memset( count, 0, sizeof(count) );
+    memset( bestcount, 0, sizeof(bestcount) );
+
     ALIGNED_ARRAY_16( pixel, buf, [8*8] );
 
     // Initialize list of membership
@@ -640,7 +643,30 @@ static void x264_weights_kmeans( x264_t *h, x264_frame_t *fenc, pixel *mcbuf, ui
     int centroids[X264_DUPS_MAX][2]; // [n_clusters][scale/offset]
     int denom = 7;
 
-    int score = x264_kmeans_search( h, weights, mcbuf, fenc_plane, offsets, i_stride, refcosts, fenc->i_intra_cost, i_mb, X264_DUPS_MAX, centroids, &denom );
+    // First check the amount of unique weights, and adjust num_dups accordingly
+    int unique_weights = 0;
+    for( int b = 0; b < i_mb && unique_weights < X264_DUPS_MAX; b++ )
+    {
+        int found = 0;
+        for( int j = 0; j < unique_weights; j++ )
+            if( centroids[j][0] == weights[b].i_scale &&
+                centroids[j][1] == weights[b].i_offset )
+            {
+                found = 1;
+                break;
+            }
+
+        if( !found )
+        {
+            centroids[unique_weights][0] = weights[b].i_scale;
+            centroids[unique_weights][1] = weights[b].i_offset;
+            unique_weights++;
+        }
+    }
+
+    memset( centroids, 0, sizeof(centroids) );
+
+    int score = x264_kmeans_search( h, weights, mcbuf, fenc_plane, offsets, i_stride, refcosts, fenc->i_intra_cost, i_mb, unique_weights, centroids, &denom );
 
     // Copy the centroids to actual weights:
     for( int i = 0; i < X264_DUPS_MAX; i++ )
